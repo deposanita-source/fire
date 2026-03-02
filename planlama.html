@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Üretim Planlama Robotu</title>
+
+<style>
+:root{
+--primary:#2563eb;
+--success:#22c55e;
+--danger:#ef4444;
+--glass:rgba(255,255,255,0.08);
+}
+
+body{
+margin:0;
+font-family:'Segoe UI',sans-serif;
+background:linear-gradient(135deg,#0f172a,#1e293b);
+color:white;
+}
+
+.sidebar{
+position:fixed;
+left:0;
+top:0;
+width:240px;
+height:100%;
+background:rgba(15,23,42,0.95);
+padding-top:40px;
+}
+
+.sidebar h2{
+text-align:center;
+font-weight:300;
+margin-bottom:40px;
+}
+
+.menu-btn{
+display:block;
+width:85%;
+margin:15px auto;
+padding:14px;
+background:var(--glass);
+border:none;
+color:white;
+border-radius:12px;
+cursor:pointer;
+}
+
+.menu-btn:hover{background:var(--primary);}
+
+.content{
+margin-left:240px;
+padding:40px;
+}
+
+.screen{display:none;}
+.active{display:block;}
+
+.calendar{
+display:grid;
+grid-template-columns:repeat(7,1fr);
+gap:15px;
+margin-top:30px;
+}
+
+.day{
+background:var(--glass);
+border-radius:15px;
+padding:25px;
+text-align:center;
+cursor:pointer;
+}
+
+.planned{border:2px solid var(--success);}
+.notplanned{border:2px solid var(--danger);}
+
+.full-form{
+background:var(--glass);
+padding:30px;
+border-radius:20px;
+max-width:800px;
+margin:auto;
+}
+
+input,select{
+width:100%;
+padding:10px;
+margin:8px 0;
+border:none;
+border-radius:8px;
+}
+
+button{
+padding:8px 16px;
+border:none;
+border-radius:8px;
+cursor:pointer;
+margin-top:10px;
+}
+
+.primary{background:var(--primary);color:white;}
+.success{background:var(--success);color:white;}
+.danger{background:var(--danger);color:white;}
+
+.detail-panel{
+margin-top:30px;
+background:var(--glass);
+padding:20px;
+border-radius:20px;
+}
+
+table{
+width:100%;
+border-collapse:collapse;
+margin-top:15px;
+}
+
+th,td{
+padding:8px;
+border-bottom:1px solid rgba(255,255,255,0.2);
+text-align:center;
+}
+
+th{background:var(--primary);}
+
+@media print{
+body *{visibility:hidden;}
+.printable, .printable *{visibility:visible;}
+.printable{position:absolute;left:0;top:0;width:100%;}
+}
+</style>
+</head>
+
+<body>
+
+<div class="sidebar">
+<h2>PLANLAMA</h2>
+<button class="menu-btn" onclick="showScreen('calendarScreen')">Planlama Takvimi</button>
+<button class="menu-btn" onclick="showScreen('planScreen')">Üretim Emri Aç</button>
+<button class="menu-btn" onclick="showScreen('reportScreen')">Raporlar</button>
+</div>
+
+<div class="content">
+
+<div id="calendarScreen" class="screen active">
+<h1>Şubat 2026</h1>
+<div class="calendar" id="calendar"></div>
+<div id="detailArea"></div>
+</div>
+
+<div id="planScreen" class="screen">
+<h1>Üretim Emri Oluştur</h1>
+<div class="full-form">
+<input type="hidden" id="editIndex">
+
+<label>Tarih</label>
+<input type="date" id="planDate" value="2026-02-01">
+
+<label>Firma</label>
+<input type="text" id="firma">
+
+<label>Ürün</label>
+<input type="text" id="urun">
+
+<label>Makine</label>
+<select id="machineSelect"></select>
+
+<label>Vardiya</label>
+<select id="vardiya">
+<option value="">Seçiniz</option>
+<option value="Sabah">Sabah</option>
+<option value="Akşam">Akşam</option>
+</select>
+
+<button class="primary" onclick="savePlan()">Kaydet</button>
+</div>
+</div>
+
+<div id="reportScreen" class="screen">
+<h1>Üretim Raporu</h1>
+
+<label>Başlangıç</label>
+<input type="date" id="rStart">
+
+<label>Bitiş</label>
+<input type="date" id="rEnd">
+
+<button class="success" onclick="generateReport()">Rapor Oluştur</button>
+<button class="primary" onclick="printReport()">Raporu Yazdır</button>
+
+<div id="reportArea"></div>
+</div>
+
+</div>
+
+<script>
+
+let plans = JSON.parse(localStorage.getItem("plans")) || [];
+
+const machineSelect=document.getElementById("machineSelect");
+
+function initMachines(){
+machineSelect.innerHTML="";
+for(let i=1;i<=20;i++){
+let opt=document.createElement("option");
+opt.value="Makine "+i;
+opt.textContent="Makine "+i;
+machineSelect.appendChild(opt);
+}
+}
+
+function showScreen(id){
+document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+document.getElementById(id).classList.add('active');
+}
+
+function savePlan(){
+
+let editIndex=document.getElementById("editIndex").value;
+
+let p={
+date:document.getElementById("planDate").value,
+firma:document.getElementById("firma").value,
+urun:document.getElementById("urun").value,
+machine:document.getElementById("machineSelect").value,
+vardiya:document.getElementById("vardiya").value
+};
+
+if(!p.date||!p.firma||!p.urun||!p.machine||!p.vardiya){
+alert("Tüm alanları doldurun.");
+return;
+}
+
+if(editIndex!==""){
+plans[editIndex]=p;
+document.getElementById("editIndex").value="";
+}else{
+plans.push(p);
+}
+
+localStorage.setItem("plans",JSON.stringify(plans));
+buildCalendar();
+alert("Kaydedildi");
+}
+
+function deletePlan(index){
+if(confirm("Silmek istiyor musunuz?")){
+plans.splice(index,1);
+localStorage.setItem("plans",JSON.stringify(plans));
+buildCalendar();
+document.getElementById("detailArea").innerHTML="";
+}
+}
+
+function editPlan(index){
+let p=plans[index];
+showScreen("planScreen");
+document.getElementById("planDate").value=p.date;
+document.getElementById("firma").value=p.firma;
+document.getElementById("urun").value=p.urun;
+document.getElementById("machineSelect").value=p.machine;
+document.getElementById("vardiya").value=p.vardiya;
+document.getElementById("editIndex").value=index;
+}
+
+function buildCalendar(){
+let cal=document.getElementById("calendar");
+cal.innerHTML="";
+for(let i=1;i<=28;i++){
+let date=`2026-02-${String(i).padStart(2,"0")}`;
+let hasPlan=plans.some(p=>p.date===date);
+let div=document.createElement("div");
+div.className="day "+(hasPlan?"planned":"notplanned");
+div.textContent=i;
+div.onclick=()=>showDetail(date);
+cal.appendChild(div);
+}
+}
+
+function showDetail(date){
+
+let area=document.getElementById("detailArea");
+
+let dayPlans=plans
+.filter(p=>p.date===date)
+.sort((a,b)=>parseInt(a.machine.replace("Makine ",""))-
+parseInt(b.machine.replace("Makine ","")));
+
+if(dayPlans.length===0){area.innerHTML="";return;}
+
+let html=`<div class="detail-panel printable">
+<h3>${date}</h3>
+<button class="primary" onclick="printReport()">Bu Günü Yazdır</button>
+<table>
+<tr>
+<th>Firma</th>
+<th>Ürün</th>
+<th>Makine</th>
+<th>Vardiya</th>
+<th>İşlem</th>
+</tr>`;
+
+dayPlans.forEach(p=>{
+let index=plans.indexOf(p);
+html+=`<tr>
+<td>${p.firma}</td>
+<td>${p.urun}</td>
+<td>${p.machine}</td>
+<td>${p.vardiya}</td>
+<td>
+<button class="success" onclick="editPlan(${index})">Düzenle</button>
+<button class="danger" onclick="deletePlan(${index})">Sil</button>
+</td>
+</tr>`;
+});
+
+html+="</table></div>";
+
+area.innerHTML=html;
+}
+
+function generateReport(){
+
+let start=document.getElementById("rStart").value;
+let end=document.getElementById("rEnd").value;
+
+let filtered=plans
+.filter(p=>p.date>=start && p.date<=end)
+.sort((a,b)=>parseInt(a.machine.replace("Makine ",""))-
+parseInt(b.machine.replace("Makine ","")));
+
+let html=`<div class="detail-panel printable">
+<h3>Rapor</h3>
+<table>
+<tr>
+<th>Firma</th>
+<th>Ürün</th>
+<th>Makine</th>
+<th>Vardiya</th>
+</tr>`;
+
+filtered.forEach(p=>{
+html+=`<tr>
+<td>${p.firma}</td>
+<td>${p.urun}</td>
+<td>${p.machine}</td>
+<td>${p.vardiya}</td>
+</tr>`;
+});
+
+html+="</table></div>";
+
+document.getElementById("reportArea").innerHTML=html;
+}
+
+function printReport(){
+window.print();
+}
+
+initMachines();
+buildCalendar();
+
+</script>
+
+</body>
+</html>
